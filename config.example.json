@@ -15,6 +15,7 @@
   },
   "allow": {
     "read_files": true,
+    "write_files": false,
     "send_command": false,
     "power": false,
     "kill": false

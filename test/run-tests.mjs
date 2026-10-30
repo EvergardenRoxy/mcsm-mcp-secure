@@ -260,7 +260,7 @@ try {
     instances: {},
     default_instance: undefined,
     wildcard: { enabled: true, allowed_daemons: [] },
-    allow: { send_command: true, power: true, kill: true },
+    allow: { write_files: true, send_command: true, power: true, kill: true },
     blocked_command_prefixes: [],
   }));
   check('通配模式出现 discover_instances，全权限工具齐全', ['discover_instances', 'send_command', 'restart_instance', 'kill_instance'].every((t) => J.tools.includes(t)), J.tools.join(','));
@@ -273,6 +273,9 @@ try {
   check('可按昵称（不区分大小写）操作实例，无需预先登记', byNick.includes('运行中'), byNick);
   const byUuid = txt(await J.call('get_instance_info', { instance: mock.uuid }));
   check('可按 UUID 操作实例', byUuid.includes('运行中'), byUuid);
+  mock.textFiles['/wildcard.txt'] = 'mode=old';
+  const wildEdit = await J.call('edit_file', { instance: 'Survival', path: '/wildcard.txt', old_text: 'mode=old', new_text: 'mode=new' });
+  check('通配模式可按昵称修改发现的实例文件', !wildEdit.isError && mock.textFiles['/wildcard.txt'] === 'mode=new');
 
   const lenBefore = mock.requests.length;
   const other = await J.call('get_instance_info', { instance: 'inst-2-uuid' });
@@ -296,12 +299,16 @@ try {
     instances: {},
     default_instance: undefined,
     wildcard: { enabled: true, allowed_daemons: ['some-other-daemon'] },
+    allow: { write_files: true },
   }));
   const dk = txt(await K.call('discover_instances'));
   check('限定到其他节点后，本节点实例不可见', dk.includes('没有发现'), dk);
   const lenK = mock.requests.length;
   const rk = await K.call('get_instance_info', { instance: mock.uuid });
   check('限定范围外的实例无法操作，且请求不会发往它', rk.isError === true && !mock.requests.slice(lenK).some((r) => r.path === '/api/instance'), txt(rk));
+  const beforeWriteK = mock.requests.length;
+  const blockedWrite = await K.call('write_file', { instance: mock.uuid, path: '/wildcard.txt', text: 'forbidden' });
+  check('文件写入同样受 allowed_daemons 限制且不发请求', blockedWrite.isError === true && mock.requests.length === beforeWriteK && mock.textFiles['/wildcard.txt'] === 'mode=new');
   allOutputs.push(...K.stderr);
   await K.close();
 
@@ -316,6 +323,79 @@ try {
   await L.close();
 
   expectStartupFailure('既无实例又未启用通配', writeCfg(path.join(tmp, 'm'), mock, { instances: {}, default_instance: undefined }), '至少需要配置一个实例');
+
+  // ---------- N. opt-in text file modification ----------
+  console.log('\n# N. 文件写入与精确替换');
+  const dirN = path.join(tmp, 'n');
+  const N = await connect(writeCfg(dirN, mock, { allow: { write_files: true }, max_output_chars: 500 }));
+  check('write_files 单独注册文件写工具，不开启命令或电源工具', N.tools.includes('write_file') && N.tools.includes('edit_file') && !N.tools.includes('send_command') && !N.tools.includes('restart_instance'));
+  const writes = () => mock.requests.filter((r) => r.path === '/api/files/' && Object.hasOwn(JSON.parse(r.body), 'text'));
+  const original = `\uFEFFmotd=你好\r\nmax-players=20\r\nvalue=$& $1\r\nprivate=${KEY} ${mock.url}\r\n` + 'unchanged\r\n'.repeat(300);
+  mock.textFiles['/editable.properties'] = original;
+  const edited = await N.call('edit_file', { path: 'editable.properties', old_text: 'max-players=20', new_text: 'max-players=40' });
+  check('edit_file 保存修改并保留 BOM、中文、CRLF 和超出输出上限的内容', !edited.isError && mock.textFiles['/editable.properties'] === original.replace('max-players=20', 'max-players=40'), txt(edited));
+  const editReq = writes().at(-1);
+  check('写入使用 PUT /api/files/、正确实例和 target/text 正文', editReq?.method === 'PUT' && editReq.query.uuid === mock.uuid && editReq.query.daemonId === mock.daemon && JSON.parse(editReq.body).target === '/editable.properties');
+  await N.call('edit_file', { path: '/editable.properties', old_text: 'value=$& $1', new_text: 'value=$` $& $1' });
+  check('精确替换不会展开美元符号或正则替换占位符', mock.textFiles['/editable.properties'].includes('value=$` $& $1\r\n'));
+  const beforeMismatch = writes().length;
+  const missing = await N.call('edit_file', { path: '/editable.properties', old_text: 'does-not-exist', new_text: 'x' });
+  const ambiguous = await N.call('edit_file', { path: '/editable.properties', old_text: 'unchanged', new_text: 'x' });
+  check('零匹配和重复匹配都拒绝写入', missing.isError === true && ambiguous.isError === true && writes().length === beforeMismatch, txt(ambiguous));
+  const multiple = await N.call('edit_file', { path: '/editable.properties', old_text: 'unchanged', new_text: 'kept', expected_matches: 300 });
+  check('明确预期匹配数后可替换多处', !multiple.isError && mock.textFiles['/editable.properties'].split('kept').length === 301);
+  const removed = await N.call('edit_file', { path: '/editable.properties', old_text: 'motd=你好', new_text: '' });
+  check('new_text 为空时可删除匹配内容', !removed.isError && !mock.textFiles['/editable.properties'].includes('motd='));
+  const replacement = 'motd=新的配置\r\npassword=FILE_BODY_PRIVATE_SENTINEL\r\n';
+  const written = await N.call('write_file', { path: '/editable.properties', text: replacement });
+  check('write_file 按原样覆盖完整文本', !written.isError && mock.textFiles['/editable.properties'] === replacement, txt(written));
+  check('保存结果不回显文件正文', !txt(written).includes('FILE_BODY_PRIVATE_SENTINEL'));
+  const emptied = await N.call('write_file', { path: '/editable.properties', text: '' });
+  check('空字符串确实清空文件（不是只读请求）', !emptied.isError && mock.textFiles['/editable.properties'] === '' && JSON.parse(writes().at(-1).body).text === '');
+
+  for (const toolName of ['write_file', 'edit_file']) {
+    const args = toolName === 'write_file' ? { text: 'x' } : { old_text: 'x', new_text: 'y' };
+    const beforeUnsafe = mock.requests.length;
+    for (const p of ['/../etc/passwd', '/logs/../../secret', '\\..\\secret', '/bad\0path', '/', '/logs/', '/mods/test.JAR']) {
+      const result = await N.call(toolName, { path: p, ...args });
+      check(`${toolName} 拒绝非法路径或二进制扩展名 ${JSON.stringify(p)}`, result.isError === true);
+    }
+    check(`${toolName} 被路径检查拦截时不访问面板`, mock.requests.length === beforeUnsafe);
+    const beforeInvalid = writes().length;
+    const disguised = await N.call(toolName, { path: '/disguised.txt', ...args });
+    const unknown = await N.call(toolName, { instance: 'not-allowed', path: '/editable.properties', ...args });
+    const nonexistent = await N.call(toolName, { path: '/not-found.txt', ...args });
+    check(`${toolName} 拒绝伪装二进制、未知实例和不存在的文件`, disguised.isError === true && unknown.isError === true && nonexistent.isError === true && writes().length === beforeInvalid);
+  }
+  mock.textFiles['/readonly.txt'] = 'old';
+  const denied = await N.call('write_file', { path: '/readonly.txt', text: 'new' });
+  check('上游保存失败不报告成功，并脱敏错误', denied.isError === true && !txt(denied).includes(KEY) && !txt(denied).includes(mock.url) && mock.textFiles['/readonly.txt'] === 'old', txt(denied));
+  const beforeInvalidText = writes().length;
+  for (const text of ['bad\0text', 'bad\uFFFDtext', '中'.repeat(350000)]) {
+    const invalid = await N.call('write_file', { path: '/editable.properties', text });
+    check('拒绝二进制字符或超过 UTF-8 字节上限的输入', invalid.isError === true);
+  }
+  mock.textFiles['/limit.txt'] = 'a'.repeat(1024 * 1024);
+  const enlarged = await N.call('edit_file', { path: '/limit.txt', old_text: 'a'.repeat(1024), new_text: 'b'.repeat(1025), expected_matches: 1024 });
+  check('替换后超出字节上限时拒绝保存', enlarged.isError === true && writes().length === beforeInvalidText);
+  const boundary = await N.call('write_file', { path: '/limit.txt', text: 'b'.repeat(1024 * 1024) });
+  check('恰好 1 MiB 的文本可保存且不截断', !boundary.isError && mock.textFiles['/limit.txt'] === 'b'.repeat(1024 * 1024));
+  const auditN = fs.readFileSync(path.join(dirN, 'audit.log'), 'utf8');
+  const entriesN = auditN.trim().split('\n').map((line) => JSON.parse(line));
+  check('文件审计记录工具、实例、路径和成功/失败', entriesN.some((e) => e.tool === 'write_file' && e.instance === 'survival' && e.detail === '/editable.properties' && e.outcome === 'ok') && entriesN.some((e) => e.tool === 'edit_file' && e.outcome === 'error'));
+  check('文件审计不记录原文或替换正文', !auditN.includes('FILE_BODY_PRIVATE_SENTINEL') && !auditN.includes('max-players=') && !auditN.includes(KEY));
+  if (POSIX) check('文件审计日志权限为 600', (fs.statSync(path.join(dirN, 'audit.log')).mode & 0o777) === 0o600);
+  check('N 组 stdout 干净（无协议错误）', N.protocolErrors.length === 0, N.protocolErrors.join(' | '));
+  allOutputs.push(...N.stderr, auditN);
+  await N.close();
+
+  const O = await connect(writeCfg(path.join(tmp, 'o'), mock, { allow: { read_files: false, write_files: true } }));
+  check('读写开关独立，关闭读取工具后仍可写入', O.tools.includes('write_file') && O.tools.includes('edit_file') && !O.tools.includes('read_file') && !O.tools.includes('list_files'));
+  mock.textFiles['/editable.properties'] = 'value=old';
+  const editOnly = await O.call('edit_file', { path: '/editable.properties', old_text: 'value=old', new_text: 'value=new' });
+  check('只开启写入权限时 edit_file 仍可工作', !editOnly.isError && mock.textFiles['/editable.properties'] === 'value=new');
+  allOutputs.push(...O.stderr);
+  await O.close();
 
   // ---------- Z. global leak sweep ----------
   console.log('\n# Z. 全局泄露扫描（所有工具输出 + 服务端 stderr + 审计日志）');

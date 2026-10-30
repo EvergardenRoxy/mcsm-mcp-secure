@@ -28,6 +28,7 @@ const FILES = {
 
 export async function startMock({ key, uuid = 'inst-uuid', daemon = 'daemon-id' }) {
   const requests = [];
+  const textFiles = { ...TEXT_FILES };
   let logText = '\u001b[32m[Server thread/INFO]\u001b[0m: Done (12.1s)! For help, type "help"\r\n';
   let status = 3;
 
@@ -110,9 +111,15 @@ export async function startMock({ key, uuid = 'inst-uuid', daemon = 'daemon-id' 
         }
         case '/api/files/': {
           if (req.method !== 'PUT') return res.end(env(400, 'method'));
-          const target = JSON.parse(bodyText || '{}').target;
-          if (target in TEXT_FILES) return res.end(env(200, TEXT_FILES[target]));
-          return res.end(env(500, 'File not found'));
+          // panel/src/app/routers/filemananger_router.ts reads the existing file first;
+          // a string `text` (including '') then saves it via daemon system_file.ts.
+          const { target, text } = JSON.parse(bodyText || '{}');
+          if (!Object.hasOwn(textFiles, target)) return res.end(env(500, 'File not found'));
+          if (typeof text === 'string') {
+            if (target === '/readonly.txt') return res.end(env(500, `Write denied at http://${req.headers.host}${req.url}`));
+            textFiles[target] = text;
+          }
+          return res.end(env(200, textFiles[target]));
         }
         default:
           res.statusCode = 404;
@@ -124,7 +131,7 @@ export async function startMock({ key, uuid = 'inst-uuid', daemon = 'daemon-id' 
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const port = server.address().port;
   return {
-    port, url: `http://127.0.0.1:${port}`, requests, uuid, daemon,
+    port, url: `http://127.0.0.1:${port}`, requests, uuid, daemon, textFiles,
     close: () => new Promise((r) => server.close(r)),
   };
 }

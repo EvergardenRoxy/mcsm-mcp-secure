@@ -4,10 +4,10 @@
 
 [![AI Assisted](https://img.shields.io/badge/AI-Claude%20Opus%205.5%20%2B%20Claude%20Code-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](#ai-disclosure) [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE) [![Node](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](#setup-guide)
 
-A least-privilege MCP server (stdio) for **MCSManager V10** that works with any MCP-capable client. It lets an AI assistant check instance status and read logs and files. With the matching switches on, it can also send console commands and start or stop instances. The API key and the panel address are stored separately, and the key never appears in the client config or in any output.
+A least-privilege MCP server (stdio) for **MCSManager V10** that works with any MCP-capable client. It lets an AI assistant check instance status and read logs and files. With the matching switches on, it can also modify text files, send console commands and start or stop instances. The API key and the panel address are stored separately, and the key never appears in the client config or in any output.
 
 > [!NOTE]
-> Verified on a real V10 panel: instance discovery, status, logs, file listing and reading, and `send_command`. Start/stop/restart/kill have only been tested against a mock panel. See [checklist.md](checklist.md) for the full status and known issues.
+> Verified on a real V10 panel: instance discovery, status, logs, file listing and reading, and `send_command`. File modification and start/stop/restart/kill have only been tested against a mock panel. See [checklist.md](checklist.md) for the full status and known issues.
 >
 > Tool output and error messages are in Chinese.
 
@@ -16,7 +16,7 @@ A least-privilege MCP server (stdio) for **MCSManager V10** that works with any 
 - **Separated secrets**: the key lives in its own `api-key` file (or the `MCSM_API_KEY` environment variable). `config.json` holds only the address, instances and switches, and the MCP client config holds only the path to `config.json`. The server refuses to start if `config.json` contains `api_key`.
 - **Unsafe setups are refused**: on Linux/macOS both files must be mode `600`; non-local addresses must use https; redirects are never followed.
 - **Redacted output**: the key, panel address, node IPs and the instance's path on the host never appear in tool results, errors or logs.
-- **Write tools are not registered by default**: `send_command`, start/stop/restart and kill must be enabled under `allow`. Until then, the model cannot see them.
+- **Write tools are not registered by default**: file modification, `send_command`, start/stop/restart and kill must be enabled under `allow`. Until then, the model cannot see them.
 - **Also**: paths containing `..` are rejected; commands containing line breaks are rejected; requests are limited to 60 per minute by default; write actions are recorded in `audit.log`.
 
 > [!WARNING]
@@ -90,7 +90,7 @@ Fill in the panel address and the IDs from step 1:
   "instances": {
     "survival": { "uuid": "<instanceId>", "daemon_id": "<daemonId>", "description": "Survival server" }
   },
-  "allow": { "read_files": true, "send_command": false, "power": false, "kill": false }
+  "allow": { "read_files": true, "write_files": false, "send_command": false, "power": false, "kill": false }
 }
 ```
 
@@ -181,7 +181,7 @@ claude mcp add mcsm -e MCSM_MCP_CONFIG=$HOME/.config/mcsm-mcp/config.json -- nod
 | `default_instance` | Alias used when a tool call omits `instance` |
 | `instances` | Alias → `uuid` + `daemon_id` (+ optional `description`) |
 | `wildcard` | `enabled: true` discovers every instance (**requires an admin key**); `allowed_daemons` limits it to certain node UUIDs |
-| `allow` | `read_files` (on by default), `send_command`, `power`, `kill` (off by default) |
+| `allow` | `read_files` (on by default), `write_files`, `send_command`, `power`, `kill` (off by default) |
 | `blocked_command_prefixes` | Forbidden command prefixes; default `stop`, `op `, `deop `, `save-off` |
 | `rate_limit_per_minute` | Request limit (default 60) |
 | `max_output_chars` | Maximum characters returned per tool call (default 8000) |
@@ -198,11 +198,27 @@ claude mcp add mcsm -e MCSM_MCP_CONFIG=$HOME/.config/mcsm-mcp/config.json -- nod
 | `get_output_log` | always | Last N lines of console output, colour codes removed |
 | `list_files` | `allow.read_files` | Lists a directory; `filter` matches names, `page` starts at 0 |
 | `read_file` | `allow.read_files` | Reads a text file; `lines` + `from: tail/head` pick a part; binary and compressed files are refused |
+| `write_file` | `allow.write_files` | Overwrites an existing text file with the complete `text`; empty text clears it |
+| `edit_file` | `allow.write_files` | Replaces literal `old_text` with `new_text`; requires exactly `expected_matches` occurrences (default 1) |
 | `send_command` | `allow.send_command` | Sends a console command and returns the new output |
 | `start_instance` / `stop_instance` / `restart_instance` | `allow.power` | Start / stop / restart |
 | `kill_instance` | `allow.kill` | Force kill |
 
 In wildcard mode, the `instance` argument accepts an alias, an instance nickname (case-insensitive) or a UUID. Duplicate nicknames are rejected instead of guessed.
+
+### Enable file modification
+
+Set `allow.write_files` to `true` in your existing `config.json` and restart the MCP server/client connection. This switch is independent of `allow.read_files`; neither console-command nor power permissions are needed. Files must already exist and be accessible to the panel account; these tools do not create files or directories.
+
+For a local change, call `edit_file` with:
+
+```json
+{"instance":"survival","path":"/server.properties","old_text":"max-players=20","new_text":"max-players=40"}
+```
+
+The entire file is read internally, so text outside `read_file`'s output limits is preserved, including CRLF, BOM and literal dollar signs. A missing or repeated match aborts the save; to replace multiple occurrences, explicitly set `expected_matches` to their count. `new_text: ""` deletes the matched text. Use `write_file` only when you have the complete replacement text; never overwrite a file with truncated or redacted `read_file` output.
+
+Both the existing and resulting file must be valid UTF-8 text of at most **1 MiB**. Binary extensions, NUL and replacement characters are refused. Audit entries contain the tool, instance, path and outcome, without file contents. Saves overwrite the file without a backup; the panel offers no atomic conditional-write API, so avoid concurrent edits to the same file. Changes may require a reload or restart in the application.
 
 ## Environment variables
 

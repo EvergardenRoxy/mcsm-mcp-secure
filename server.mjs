@@ -63,6 +63,7 @@ const ConfigSchema = z
     allow: z
       .object({
         read_files: z.boolean().default(true),
+        write_files: z.boolean().default(false),
         send_command: z.boolean().default(false),
         power: z.boolean().default(false),
         kill: z.boolean().default(false),
@@ -309,6 +310,35 @@ function safePath(p) {
   return s.startsWith('/') ? s : '/' + s;
 }
 
+// Keep writes below the daemon's 5 MB read limit and preserve the exact UTF-8 text.
+const MAX_WRITE_BYTES = 1024 * 1024;
+function writableText(text) {
+  if (typeof text !== 'string') throw new McsmError('面板返回的文件内容不是文本');
+  if (/[\0\uFFFD]/.test(text)) throw new McsmError('文件内容包含 NUL 或无效 UTF-8 字符，拒绝修改可能的二进制文件');
+  if (Buffer.byteLength(text, 'utf8') > MAX_WRITE_BYTES) throw new McsmError('文本文件修改上限为 1 MiB（按 UTF-8 字节计算）');
+  return text;
+}
+
+async function modifyFile(toolName, instance, p, transform) {
+  const { name, ref } = await resolveInstance(instance);
+  let target;
+  let outcome = 'error';
+  try {
+    target = safePath(p);
+    if (target === '/' || /[\\/]$/.test(target)) throw new McsmError('请指定文件路径，不能是目录');
+    if (BINARY_EXT.test(target)) throw new McsmError('二进制或压缩文件不能以文本修改');
+    // Read without clean(), redaction, line slicing or output limits: those would corrupt saved text.
+    const current = writableText(await api('PUT', '/api/files/', { query: ref, body: { target } }));
+    const text = writableText(transform(current));
+    await api('PUT', '/api/files/', { query: ref, body: { target, text } });
+    outcome = 'ok';
+    return ok(`已保存文件 "${target}"（${Buffer.byteLength(text, 'utf8')} 字节）。`);
+  } finally {
+    // Never include file contents or replacement strings in the audit log.
+    audit(toolName, name, target ?? '(invalid path)', outcome);
+  }
+}
+
 const STATUS_TEXT = { '-1': '忙碌', 0: '已停止', 1: '正在停止', 2: '正在启动', 3: '运行中' };
 
 async function fetchLog(ref, sizeKb) {
@@ -326,7 +356,7 @@ function newOutput(before, after) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ----------------------------------------------------------------- server --
-const server = new McpServer({ name: 'mcsm-mcp-secure', version: '0.2.0' });
+const server = new McpServer({ name: 'mcsm-mcp-secure', version: '0.3.0' });
 const enabled = [];
 const READ = { readOnlyHint: true, openWorldHint: true };
 const instanceParam = z
@@ -468,6 +498,47 @@ if (CFG.allow.read_files) {
 }
 
 // ---- write tools (opt-in) ----
+if (CFG.allow.write_files) {
+  const WRITE_FILE = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
+  tool(
+    'write_file',
+    '覆盖实例内的文本文件',
+    '用完整文本覆盖已有文件（不创建文件或目录），上限 1 MiB UTF-8；拒绝二进制文件。' +
+      'text 必须包含完整内容，不要用 read_file 截断后的输出覆盖文件；局部修改优先用 edit_file。',
+    {
+      instance: instanceParam,
+      path: z.string().min(1).describe('已有文本文件的路径，如 /server.properties'),
+      text: z.string().max(MAX_WRITE_BYTES).describe('保存的完整 UTF-8 文本；空字符串会清空文件'),
+    },
+    WRITE_FILE,
+    async ({ instance, path: p, text }) => {
+      writableText(text);
+      return modifyFile('write_file', instance, p, () => text);
+    },
+  );
+  tool(
+    'edit_file',
+    '精确替换实例文本文件内容',
+    '在完整文件中按字面文本替换，保留其余内容和换行。匹配数必须等于 expected_matches，否则不写入。' +
+      '上限 1 MiB UTF-8；拒绝二进制文件。面板不支持原子条件写入，应避免同时编辑同一文件。',
+    {
+      instance: instanceParam,
+      path: z.string().min(1).describe('已有文本文件的路径，如 /server.properties'),
+      old_text: z.string().min(1).max(MAX_WRITE_BYTES).describe('要替换的原文（精确匹配，不使用正则）'),
+      new_text: z.string().max(MAX_WRITE_BYTES).describe('替换后的文本；空字符串表示删除匹配内容'),
+      expected_matches: z.number().int().min(1).max(MAX_WRITE_BYTES).default(1).describe('预期的非重叠匹配数，默认 1；多个匹配时须明确指定数量'),
+    },
+    WRITE_FILE,
+    async ({ instance, path: p, old_text, new_text, expected_matches = 1 }) =>
+      modifyFile('edit_file', instance, p, (current) => {
+        const parts = current.split(old_text);
+        const matches = parts.length - 1;
+        if (matches !== expected_matches) throw new McsmError(`原文匹配 ${matches} 处，预期 ${expected_matches} 处；未修改文件`);
+        return parts.join(new_text);
+      }),
+  );
+}
+
 if (CFG.allow.send_command) {
   tool(
     'send_command',

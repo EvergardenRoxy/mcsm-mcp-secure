@@ -4,17 +4,17 @@
 
 [![AI Assisted](https://img.shields.io/badge/AI-Claude%20Opus%205.5%20%2B%20Claude%20Code-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](#ai-制作声明) [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE) [![Node](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](#安装配置教程)
 
-一个 **MCSManager V10** 用的最小权限 MCP 服务端（stdio），可接入任何支持 MCP 的客户端。AI 助手可以用它查看实例状态、读日志和文件；开启相应开关后，也能发命令、启停实例。API Key 和面板地址分开存放，Key 不会出现在客户端配置或任何输出里。
+一个 **MCSManager V10** 用的最小权限 MCP 服务端（stdio），可接入任何支持 MCP 的客户端。AI 助手可以用它查看实例状态、读日志和文件；开启相应开关后，也能修改文本文件、发命令、启停实例。API Key 和面板地址分开存放，Key 不会出现在客户端配置或任何输出里。
 
 > [!NOTE]
-> 已在真实 V10 面板上验证：实例发现、状态、日志、文件列表与读取、`send_command`。启停和强制终止只在模拟面板上测过。完整现状和问题见 [checklist.md](checklist.md)。
+> 已在真实 V10 面板上验证：实例发现、状态、日志、文件列表与读取、`send_command`。文件修改、启停和强制终止只在模拟面板上测过。完整现状和问题见 [checklist.md](checklist.md)。
 
 ## 安全设计
 
 - **密钥分离**：Key 放在单独的 `api-key` 文件（或环境变量 `MCSM_API_KEY`）；`config.json` 只放地址、实例和开关；MCP 客户端配置里只写 `config.json` 的路径。`config.json` 里写了 `api_key` 会直接拒绝启动。
 - **拒绝不安全配置**：Linux / macOS 上两个文件不是 `600` 权限就拒绝启动；非本机地址必须 https；不跟随重定向。
 - **输出脱敏**：Key、面板地址、节点 IP、服务器上的实例路径不会出现在工具输出、错误信息和日志里。
-- **写类工具默认不注册**：`send_command`、启停、强制终止要在 `allow` 里开启，否则模型根本看不到。
+- **写类工具默认不注册**：文件修改、`send_command`、启停、强制终止要在 `allow` 里开启，否则模型根本看不到。
 - **其他**：路径拒绝 `..`；命令拒绝换行；默认每分钟最多 60 次请求；写操作记录到 `audit.log`。
 
 > [!WARNING]
@@ -88,7 +88,7 @@ notepad "$dir\config.json"   # 保存为 UTF-8（带不带 BOM 都可以）
   "instances": {
     "survival": { "uuid": "<instanceId>", "daemon_id": "<daemonId>", "description": "Survival server" }
   },
-  "allow": { "read_files": true, "send_command": false, "power": false, "kill": false }
+  "allow": { "read_files": true, "write_files": false, "send_command": false, "power": false, "kill": false }
 }
 ```
 
@@ -179,7 +179,7 @@ claude mcp add mcsm -e MCSM_MCP_CONFIG=$HOME/.config/mcsm-mcp/config.json -- nod
 | `default_instance` | 工具调用没有指定 `instance` 时使用的别名 |
 | `instances` | 别名 → `uuid` + `daemon_id`（可选 `description`） |
 | `wildcard` | `enabled: true` 时自动发现所有实例（**需要管理员 Key**）；`allowed_daemons` 限定节点 UUID |
-| `allow` | `read_files`（默认开）、`send_command`、`power`、`kill`（默认关） |
+| `allow` | `read_files`（默认开）、`write_files`、`send_command`、`power`、`kill`（默认关） |
 | `blocked_command_prefixes` | 禁止的命令前缀，默认 `stop`、`op `、`deop `、`save-off` |
 | `rate_limit_per_minute` | 每分钟请求上限（默认 60） |
 | `max_output_chars` | 每次工具调用最多返回的字符数（默认 8000） |
@@ -196,11 +196,27 @@ claude mcp add mcsm -e MCSM_MCP_CONFIG=$HOME/.config/mcsm-mcp/config.json -- nod
 | `get_output_log` | 始终 | 终端输出最后 N 行，已去除颜色码 |
 | `list_files` | `allow.read_files` | 列目录；`filter` 按名称过滤，`page` 从 0 开始 |
 | `read_file` | `allow.read_files` | 读文本文件；`lines` + `from: tail/head` 选取部分；拒绝二进制和压缩文件 |
+| `write_file` | `allow.write_files` | 用完整 `text` 覆盖已有文本文件，空文本表示清空 |
+| `edit_file` | `allow.write_files` | 按字面值将 `old_text` 替换为 `new_text`；匹配数必须等于 `expected_matches`（默认 1） |
 | `send_command` | `allow.send_command` | 发送命令并返回新增输出 |
 | `start_instance` / `stop_instance` / `restart_instance` | `allow.power` | 启动 / 停止 / 重启 |
 | `kill_instance` | `allow.kill` | 强制终止 |
 
 通配模式下，`instance` 参数可以用别名、实例昵称（不区分大小写）或 UUID；昵称重复时会拒绝猜测。
+
+### 开启文件修改
+
+在现有 `config.json` 中将 `allow.write_files` 设为 `true`，然后重启 MCP 服务端或客户端连接。此开关独立于 `allow.read_files`，不需要开启控制台命令或电源权限。文件须已存在，且面板账号有权访问；这两个工具不创建文件或目录。
+
+局部修改可调用 `edit_file`：
+
+```json
+{"instance":"survival","path":"/server.properties","old_text":"max-players=20","new_text":"max-players=40"}
+```
+
+工具内部读取完整文件，所以 `read_file` 输出范围以外的内容也会保留，包含 CRLF、BOM 和美元符号。未匹配或重复匹配时不保存；需要替换多处时，显式将 `expected_matches` 设为匹配数量。`new_text: ""` 表示删除匹配内容。只有掌握完整替换文本时才使用 `write_file`，不要用经过截断或脱敏的 `read_file` 输出覆盖文件。
+
+原文件和修改结果都须为不超过 **1 MiB** 的 UTF-8 文本；拒绝二进制扩展名、NUL 和替换字符。审计日志只记录工具、实例、路径和结果，不记录文件正文。保存会覆盖文件，不自动备份；面板没有原子条件写入接口，应避免同时编辑同一文件。修改后可能需要在应用中重载或重启才能生效。
 
 ## 环境变量
 
