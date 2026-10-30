@@ -3,7 +3,7 @@
 > 本文件面向**人类审查者**，重点列出现状与问题点。每条均为中文 + English。
 > This file is for **human reviewers** and focuses on current status and open problems. Every item is bilingual.
 >
-> 版本 / Version: **0.3.0** · 对照 MCSManager 源码 / Checked against MCSManager source: `MCSManager/MCSManager@18c80bf` (2026-10-12)
+> 版本 / Version: **0.2.1** · 对照 MCSManager 源码 / Checked against MCSManager source: `MCSManager/MCSManager@18c80bf` (2026-10-12)
 
 ---
 
@@ -17,14 +17,14 @@
 | `list_files`（含 `filter`、分页 / incl. filter, paging） | ✅（0.1.1 修复后 / after the 0.1.1 fix） | ✅ |
 | `read_file` 文本读取 / text read | ✅ | ✅ |
 | `read_file` 二进制拒绝、`lines`/`from`（0.2.0 新增） / binary refusal, `lines`/`from` (new in 0.2.0) | ❌ 未验证 / not verified | ✅ |
-| `write_file` / `edit_file`（0.3.0 新增 / new in 0.3.0） | ❌ 未验证 / not verified | ✅ |
+| `write_file` / `edit_file`（0.2.1 新增 / new in 0.2.1） | ❌ 未验证 / not verified | ✅ |
 | `send_command` | ✅（只发过无副作用命令 / harmless commands only） | ✅ |
 | `start` / `stop` / `restart` / `kill_instance` | ❌ 未验证 / not verified | ✅ |
 | `wildcard.allowed_daemons` 过滤 / filtering | ❌ 未验证 / not verified | ✅ |
 | 启动安全检查（权限、https、内联密钥） / startup safety checks | Linux mock ✅；Windows ❌ 未在真机跑过测试 / never run on real Windows | ✅ |
 
 已修复 / Fixed:
-- **0.3.0** 新增 `allow.write_files`（默认关），支持已有文本文件的完整覆盖和精确替换，含大小限制、匹配数检查和不含正文的审计。
+- **0.2.1** 新增 `allow.write_files`（默认关），支持已有文本文件的完整覆盖和精确替换，含大小限制、匹配数检查和不含正文的审计。
   Added opt-in `allow.write_files` for full overwrite and literal replacement of existing text files, with size limits, match-count checks and content-free audit entries.
 - **0.1.1** `list_files` 在真实面板上总是为空：面板把缺省的 `file_name` 变成字符串 `"undefined"` 并据此过滤。现在总是发送 `file_name`。
   `list_files` was always empty on real panels: the panel turns a missing `file_name` into the string `"undefined"` and filters by it. `file_name` is now always sent.

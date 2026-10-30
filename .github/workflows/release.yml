@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Check release version
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const version = process.env.GITHUB_REF_NAME.slice(1);
+          assert.match(version, /^\d+\.\d+\.\d+$/);
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          assert.equal(pkg.version, version);
+          assert.equal(lock.version, version);
+          assert.equal(lock.packages[''].version, version);
+          assert.ok(fs.readFileSync('server.mjs', 'utf8').includes(`version: '${version}'`));
+          assert.ok(fs.existsSync(`release-notes/v${version}.md`));
+          JS
+      - run: npm ci
+      - run: npm test
+      - name: Build release archives
+        run: |
+          release_name="mcsm-mcp-secure-${GITHUB_REF_NAME}"
+          release_dir="${RUNNER_TEMP}/mcsm-release"
+          mkdir -p "$release_dir"
+          git archive --format=zip --prefix="${release_name}/" --output="${release_dir}/${release_name}.zip" "$GITHUB_SHA"
+          git archive --format=tar.gz --prefix="${release_name}/" --output="${release_dir}/${release_name}.tar.gz" "$GITHUB_SHA"
+          npm pack --ignore-scripts --pack-destination "$release_dir"
+          cd "$release_dir"
+          sha256sum ./*.zip ./*.tar.gz ./*.tgz > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "${RUNNER_TEMP}/mcsm-release/"* \
+            --verify-tag --title "$GITHUB_REF_NAME" --latest \
+            --notes-file "release-notes/${GITHUB_REF_NAME}.md"

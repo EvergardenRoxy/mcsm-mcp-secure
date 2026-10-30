@@ -4,7 +4,7 @@ Read this before changing the code. Human-facing status and risks: `checklist.md
 
 ## 1. What this is
 - `mcsm-mcp-secure`: a single-file MCP stdio server (`server.mjs`, Node ≥18, ESM) that lets any MCP client supporting stdio servers (e.g. Claude Desktop, Claude Code, other `mcpServers`-style clients) manage MCSManager **V10** instances through the panel HTTP API.
-- Version: 0.3.0. Dependencies: `@modelcontextprotocol/sdk`, `zod` (v3). No build step.
+- Version: 0.2.1. Dependencies: `@modelcontextprotocol/sdk`, `zod` (v3). No build step.
 - Primary goal: least privilege + secret isolation. The API key must never reach the MCP client config, tool output, errors, stderr, or `audit.log`.
 
 ## 2. File map

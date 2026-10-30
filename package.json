@@ -1,6 +1,6 @@
 {
   "name": "mcsm-mcp-secure",
-  "version": "0.3.0",
+  "version": "0.2.1",
   "description": "Least-privilege MCP server for MCSManager (V10). Secrets live in separate 0600 files, never in the MCP client config.",
   "type": "module",
   "main": "server.mjs",

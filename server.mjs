@@ -356,7 +356,7 @@ function newOutput(before, after) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ----------------------------------------------------------------- server --
-const server = new McpServer({ name: 'mcsm-mcp-secure', version: '0.3.0' });
+const server = new McpServer({ name: 'mcsm-mcp-secure', version: '0.2.1' });
 const enabled = [];
 const READ = { readOnlyHint: true, openWorldHint: true };
 const instanceParam = z
