@@ -2,4 +2,3 @@ node_modules/
 audit.log
 api-key
 config.json
-*.zip
