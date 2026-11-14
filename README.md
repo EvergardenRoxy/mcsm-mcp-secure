@@ -226,7 +226,6 @@ Both the existing and resulting file must be valid UTF-8 text of at most **1 MiB
 | --- | --- |
 | `MCSM_MCP_CONFIG` | Path to `config.json` (default `~/.config/mcsm-mcp/config.json`) |
 | `MCSM_API_KEY` | Supplies the key directly; takes priority over the key file |
-| `MCSM_MCP_AUDIT` | Audit log path (default `audit.log` next to the config) |
 | `MCSM_MCP_ALLOW_LOOSE_PERMS=1` | Skips the file permission check (not recommended) |
 
 ## Public panels

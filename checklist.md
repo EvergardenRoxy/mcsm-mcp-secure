@@ -3,7 +3,7 @@
 > 本文件面向**人类审查者**，重点列出现状与问题点。每条均为中文 + English。
 > This file is for **human reviewers** and focuses on current status and open problems. Every item is bilingual.
 >
-> 版本 / Version: **0.2.1** · 对照 MCSManager 源码 / Checked against MCSManager source: `MCSManager/MCSManager@18c80bf` (2026-10-12)
+> 版本 / Version: **0.3.0** · 对照 MCSManager 源码 / Checked against MCSManager source: `MCSManager/MCSManager@18c80bf` (2026-10-12)
 
 ---
 
@@ -21,15 +21,9 @@
 | `send_command` | ✅（只发过无副作用命令 / harmless commands only） | ✅ |
 | `start` / `stop` / `restart` / `kill_instance` | ❌ 未验证 / not verified | ✅ |
 | `wildcard.allowed_daemons` 过滤 / filtering | ❌ 未验证 / not verified | ✅ |
-| 启动安全检查（权限、https、内联密钥） / startup safety checks | Linux mock ✅；Windows ❌ 未在真机跑过测试 / never run on real Windows | ✅ |
+| 启动安全检查（权限、https、内联密钥） / startup safety checks | Linux ✅；Windows 11 ✅（2026-11-15，权限断言跳过 / permission assertions skipped） | ✅ |
 
-已修复 / Fixed:
-- **0.2.1** 新增 `allow.write_files`（默认关），支持已有文本文件的完整覆盖和精确替换，含大小限制、匹配数检查和不含正文的审计。
-  Added opt-in `allow.write_files` for full overwrite and literal replacement of existing text files, with size limits, match-count checks and content-free audit entries.
-- **0.1.1** `list_files` 在真实面板上总是为空：面板把缺省的 `file_name` 变成字符串 `"undefined"` 并据此过滤。现在总是发送 `file_name`。
-  `list_files` was always empty on real panels: the panel turns a missing `file_name` into the string `"undefined"` and filters by it. `file_name` is now always sent.
-- **0.2.0** `read_file` 读压缩日志 / jar / 存档会返回乱码。现在按扩展名和内容拒绝二进制文件。
-  `read_file` returned garbage for `.log.gz` / jars / world data. Binary files are now refused by extension and by content sniffing.
+各版本的变更见 [release-notes/](release-notes/)。Changes per version are in [release-notes/](release-notes/).
 
 ---
 
@@ -83,8 +77,8 @@
 
 <a id="s7"></a>
 ### S7 🟠 Windows 支持较弱 / Weak Windows support
-- 中：Windows 上不检查文件权限，需要手动用 NTFS ACL 限制；`npm test` 在 Windows 上会跳过权限相关测试，但整套测试从未在 Windows 真机上跑过。
-- EN: No file-permission check on Windows; restrict the files with NTFS ACLs manually. `npm test` skips the permission tests on Windows, but the suite has never been run on a real Windows machine.
+- 中：Windows 上不检查文件权限，需要手动用 NTFS ACL 限制；`npm test` 在 Windows 上会跳过权限相关测试（其余测试已在 Windows 11 上通过）。
+- EN: No file-permission check on Windows; restrict the files with NTFS ACLs manually. `npm test` skips the permission tests on Windows (the rest of the suite passes on Windows 11).
 
 <a id="s8"></a>
 ### S8 🟡 面板把每次读取记为"修改文件" / The panel logs every read as a file update
@@ -118,8 +112,8 @@
 
 <a id="s14"></a>
 ### S14 ⚪ 接口兼容性 / API compatibility
-- 中：接口参数对照的是上面写的源码版本；`get_instance_info` 的字段取自面板原始返回，不同版本可能不同。没有 CI。
-- EN: API parameters were checked against the source revision above. `get_instance_info` fields come straight from the panel and may differ between versions. There is no CI.
+- 中：接口参数对照的是上面写的源码版本；`get_instance_info` 的字段取自面板原始返回，不同版本可能不同。测试只在打 tag 触发的发版工作流中运行，push / PR 没有 CI。
+- EN: API parameters were checked against the source revision above. `get_instance_info` fields come straight from the panel and may differ between versions. Tests run only in the tag-triggered release workflow; there is no CI on push or pull requests.
 
 <a id="s15"></a>
 ### S15 🟠 文件修改覆盖原文且不支持原子并发检查 / File saves overwrite content without atomic concurrency checks
@@ -135,9 +129,9 @@
 - [ ] 文件修改保留原始文本；拒绝不符合预期的匹配数；审计和保存结果不含文件正文。File modification preserves raw text, rejects unexpected match counts, and omits file contents from audit and save results.
 - [ ] 任何工具输出、错误信息、stderr、`audit.log` 中不出现 API Key、面板地址、节点 IP、`absolutePath`（测试 Z 组会扫描）。No API key, panel address, node IP or `absolutePath` in any tool output, error, stderr or `audit.log` (checked by test group Z).
 - [ ] `redirect: 'error'` 保持不变，密钥不会被转发到重定向目标。`redirect: 'error'` stays, so the key is never forwarded to a redirect target.
-- [ ] `safePath` 拒绝 `..` 与 NUL。`safePath` rejects `..` and NUL.
+- [ ] `normalizePath` 拒绝 `..` 与 NUL。`normalizePath` rejects `..` and NUL.
 - [ ] `config.json` 中出现 `api_key` 时拒绝启动。Startup is refused when `config.json` contains `api_key`.
-- [ ] `server.mjs` 中 BOM 处理保持转义写法 `/^﻿/`，不能是字面 BOM 字符。The BOM strip in `server.mjs` must stay the escaped `/^﻿/`, not a literal BOM character.
+- [ ] `lib/config.mjs` 中 BOM 处理保持转义写法 `/^\uFEFF/`，不能是字面 BOM 字符。The BOM strip in `lib/config.mjs` must stay the escaped `/^\uFEFF/`, not a literal BOM character.
 - [ ] `list_files` 总是发送 `file_name`（见 0.1.1 修复）。`list_files` always sends `file_name` (see the 0.1.1 fix).
 - [ ] `npm test` 全部通过；修改后做变异检查（故意改坏代码，确认测试失败）。`npm test` passes; after changes, do a mutation check (break the code on purpose and confirm a test fails).
 - [ ] `npm audit --omit=dev`（2026-10-13：0 个漏洞）。`npm audit --omit=dev` (2026-10-13: 0 vulnerabilities).
