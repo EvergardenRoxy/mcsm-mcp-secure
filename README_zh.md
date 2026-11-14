@@ -2,12 +2,12 @@
 
 [English](README.md) | **中文**
 
-[![AI Assisted](https://img.shields.io/badge/AI-Claude%20Opus%205.5%20%2B%20Claude%20Code-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](#ai-制作声明) [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE) [![Node](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](#安装配置教程)
+[![AI Assisted](https://img.shields.io/badge/AI-Claude%20Opus%205.5%20%2B%20Fable%205.2-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](#ai-制作声明) [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE) [![Node](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](#安装配置教程)
 
 一个 **MCSManager V10** 用的最小权限 MCP 服务端（stdio），可接入任何支持 MCP 的客户端。AI 助手可以用它查看实例状态、读日志和文件；开启相应开关后，也能修改文本文件、发命令、启停实例。API Key 和面板地址分开存放，Key 不会出现在客户端配置或任何输出里。
 
 > [!NOTE]
-> 已在真实 V10 面板上验证：实例发现、状态、日志、文件列表与读取、`send_command`。文件修改、启停和强制终止只在模拟面板上测过。完整现状和问题见 [checklist.md](checklist.md)。
+> 已在真实 V10 面板上验证：实例发现、状态、日志、文件列表与读取、`send_command`、`edit_file`。`write_file`、启停和强制终止只在模拟面板上测过。完整现状和问题见 [checklist.md](checklist.md)。
 
 ## 安全设计
 
@@ -83,7 +83,6 @@ notepad "$dir\config.json"   # 保存为 UTF-8（带不带 BOM 都可以）
 ```json
 {
   "base_url": "https://panel.example.com",
-  "api_key_file": "api-key",
   "default_instance": "survival",
   "instances": {
     "survival": { "uuid": "<instanceId>", "daemon_id": "<daemonId>", "description": "Survival server" }
@@ -206,17 +205,16 @@ claude mcp add mcsm -e MCSM_MCP_CONFIG=$HOME/.config/mcsm-mcp/config.json -- nod
 
 ### 开启文件修改
 
-在现有 `config.json` 中将 `allow.write_files` 设为 `true`，然后重启 MCP 服务端或客户端连接。此开关独立于 `allow.read_files`，不需要开启控制台命令或电源权限。文件须已存在，且面板账号有权访问；这两个工具不创建文件或目录。
-
-局部修改可调用 `edit_file`：
+将 `allow.write_files` 设为 `true` 并重启 MCP 客户端。此开关独立于其他开关。
 
 ```json
 {"instance":"survival","path":"/server.properties","old_text":"max-players=20","new_text":"max-players=40"}
 ```
 
-工具内部读取完整文件，所以 `read_file` 输出范围以外的内容也会保留，包含 CRLF、BOM 和美元符号。未匹配或重复匹配时不保存；需要替换多处时，显式将 `expected_matches` 设为匹配数量。`new_text: ""` 表示删除匹配内容。只有掌握完整替换文本时才使用 `write_file`，不要用经过截断或脱敏的 `read_file` 输出覆盖文件。
-
-原文件和修改结果都须为不超过 **1 MiB** 的 UTF-8 文本；拒绝二进制扩展名、NUL 和替换字符。审计日志只记录工具、实例、路径和结果，不记录文件正文。保存会覆盖文件，不自动备份；面板没有原子条件写入接口，应避免同时编辑同一文件。修改后可能需要在应用中重载或重启才能生效。
+- `edit_file` 按字面文本替换。匹配数必须等于 `expected_matches`（默认 1），否则不保存。`new_text: ""` 表示删除匹配内容。
+- `write_file` 覆盖整个文件。不要把截断过的 `read_file` 输出传给它。
+- 文件必须已存在，修改前后都须是不超过 **1 MiB** 的 UTF-8 文本；拒绝二进制文件。CRLF、BOM 以及 `read_file` 输出上限之外的内容都会保留。
+- 不自动备份，也不防并发编辑（[S15](checklist.md#s15)）。`audit.log` 只记录工具、实例、路径和结果，不记录文件正文。
 
 ## 环境变量
 
@@ -246,7 +244,9 @@ claude mcp add mcsm -e MCSM_MCP_CONFIG=$HOME/.config/mcsm-mcp/config.json -- nod
 > [!IMPORTANT]
 > **AI 制作声明：mcsm-mcp-secure 采用生成式 AI 参与架构设计、编码、文档与测试。** AI 生成或修改的内容由项目维护者审阅、验证并承担最终维护责任。
 >
-> 参与的 AI：**Claude Opus 5.5**（通过 **Claude Code**）参与架构设计、编码、测试与安全审查，对照 MCSManager 源码核对接口并修复缺陷，以及 README、审查清单（`checklist.md`）与交接文档（`handoff.md`）的编写。
+> 参与的 AI（均通过 **Claude Code**）：
+> - **Claude Opus 5.5**：最初的架构设计、编码、测试与安全审查；对照 MCSManager 源码核对接口；编写 README、`checklist.md` 和 `handoff.md`。
+> - **Claude Fable 5.2**：0.3.0 的整理与重构（拆分模块、清除遗留）、真实面板复验，以及本次文档更新。
 
 ## 许可证
 

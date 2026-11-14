@@ -2,12 +2,12 @@
 
 **English** | [中文](README_zh.md)
 
-[![AI Assisted](https://img.shields.io/badge/AI-Claude%20Opus%205.5%20%2B%20Claude%20Code-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](#ai-disclosure) [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE) [![Node](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](#setup-guide)
+[![AI Assisted](https://img.shields.io/badge/AI-Claude%20Opus%205.5%20%2B%20Fable%205.2-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](#ai-disclosure) [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE) [![Node](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](#setup-guide)
 
 A least-privilege MCP server (stdio) for **MCSManager V10** that works with any MCP-capable client. It lets an AI assistant check instance status and read logs and files. With the matching switches on, it can also modify text files, send console commands and start or stop instances. The API key and the panel address are stored separately, and the key never appears in the client config or in any output.
 
 > [!NOTE]
-> Verified on a real V10 panel: instance discovery, status, logs, file listing and reading, and `send_command`. File modification and start/stop/restart/kill have only been tested against a mock panel. See [checklist.md](checklist.md) for the full status and known issues.
+> Verified on a real V10 panel: instance discovery, status, logs, file listing and reading, `send_command` and `edit_file`. `write_file` and start/stop/restart/kill have only been tested against a mock panel. See [checklist.md](checklist.md) for the full status and known issues.
 >
 > Tool output and error messages are in Chinese.
 
@@ -85,7 +85,6 @@ Fill in the panel address and the IDs from step 1:
 ```json
 {
   "base_url": "https://panel.example.com",
-  "api_key_file": "api-key",
   "default_instance": "survival",
   "instances": {
     "survival": { "uuid": "<instanceId>", "daemon_id": "<daemonId>", "description": "Survival server" }
@@ -208,17 +207,16 @@ In wildcard mode, the `instance` argument accepts an alias, an instance nickname
 
 ### Enable file modification
 
-Set `allow.write_files` to `true` in your existing `config.json` and restart the MCP server/client connection. This switch is independent of `allow.read_files`; neither console-command nor power permissions are needed. Files must already exist and be accessible to the panel account; these tools do not create files or directories.
-
-For a local change, call `edit_file` with:
+Set `allow.write_files` to `true` and restart the MCP client. The switch is independent of the others.
 
 ```json
 {"instance":"survival","path":"/server.properties","old_text":"max-players=20","new_text":"max-players=40"}
 ```
 
-The entire file is read internally, so text outside `read_file`'s output limits is preserved, including CRLF, BOM and literal dollar signs. A missing or repeated match aborts the save; to replace multiple occurrences, explicitly set `expected_matches` to their count. `new_text: ""` deletes the matched text. Use `write_file` only when you have the complete replacement text; never overwrite a file with truncated or redacted `read_file` output.
-
-Both the existing and resulting file must be valid UTF-8 text of at most **1 MiB**. Binary extensions, NUL and replacement characters are refused. Audit entries contain the tool, instance, path and outcome, without file contents. Saves overwrite the file without a backup; the panel offers no atomic conditional-write API, so avoid concurrent edits to the same file. Changes may require a reload or restart in the application.
+- `edit_file` replaces literal text. The number of matches must equal `expected_matches` (default 1), otherwise nothing is saved. `new_text: ""` deletes the match.
+- `write_file` replaces the whole file. Never pass it truncated `read_file` output.
+- The file must already exist and be UTF-8 text of at most **1 MiB**, before and after the change. Binary files are refused. CRLF, BOM and text beyond `read_file`'s output limit are preserved.
+- There is no backup and no protection against concurrent edits ([S15](checklist.md#s15)). `audit.log` records the tool, instance, path and outcome, never file contents.
 
 ## Environment variables
 
@@ -248,7 +246,9 @@ See **[checklist.md](checklist.md)** (English and Chinese) for issues, severity 
 > [!IMPORTANT]
 > **AI disclosure: generative AI took part in the architecture, code, documentation and tests of mcsm-mcp-secure.** All AI-generated or AI-modified content is reviewed and verified by the project maintainer, who is responsible for its maintenance.
 >
-> AI involved: **Claude Opus 5.5** (via **Claude Code**): architecture design, coding, testing and security review, checking the API against the MCSManager source and fixing defects, and writing the README, the review checklist (`checklist.md`) and the handoff notes (`handoff.md`).
+> AI involved, both through **Claude Code**:
+> - **Claude Opus 5.5**: original architecture, code, tests and security review; checking the API against the MCSManager source; the README, `checklist.md` and `handoff.md`.
+> - **Claude Fable 5.2**: the 0.3.0 cleanup and refactor (split into modules, removal of leftovers), re-verification on a real panel, and the documentation update.
 
 ## License
 
