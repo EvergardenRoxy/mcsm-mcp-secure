@@ -139,7 +139,8 @@ try {
   // ---------- B. write tools opted in ----------
   console.log('\n# B. 开启 send_command + power（不开 kill）');
   const dirB = path.join(tmp, 'b');
-  const B = await connect(writeCfg(dirB, mock, { allow: { send_command: true, power: true } }));
+  const strayAudit = path.join(tmp, 'stray-audit.log');
+  const B = await connect(writeCfg(dirB, mock, { allow: { send_command: true, power: true } }), { MCSM_MCP_AUDIT: strayAudit });
   check('写工具按配置出现，kill 不出现', B.tools.includes('send_command') && B.tools.includes('restart_instance') && !B.tools.includes('kill_instance'), B.tools.join(','));
 
   const sc = txt(await B.call('send_command', { command: '/list', wait_ms: 300 }));
@@ -165,10 +166,12 @@ try {
   check('上游错误被转成 isError', boom.isError === true && txt(boom).includes('status=500'), txt(boom));
   check('上游错误回显的 URL/密钥被脱敏', !txt(boom).includes(KEY) && !txt(boom).includes(mock.url) && txt(boom).includes('<redacted>'), txt(boom));
 
+  await B.call('send_command', { command: `say ${KEY}`, wait_ms: 200 });
   const auditPath = path.join(dirB, 'audit.log');
   const auditRaw = fs.existsSync(auditPath) ? fs.readFileSync(auditPath, 'utf8') : '';
   check('审计日志已写入，包含执行与拦截记录', auditRaw.includes('"outcome":"ok"') && auditRaw.includes('"outcome":"blocked"'), auditRaw.slice(0, 200));
-  check('审计日志不含密钥', !auditRaw.includes(KEY));
+  check('审计日志不含密钥（即使命令里带有密钥）', auditRaw.includes('say <redacted>') && !auditRaw.includes(KEY));
+  check('审计日志固定在配置目录（已移除的 MCSM_MCP_AUDIT 不生效）', !fs.existsSync(strayAudit));
   if (POSIX) check('审计日志权限为 600', (fs.statSync(auditPath).mode & 0o777) === 0o600);
   check('B 组 stdout 干净（无协议错误）', B.protocolErrors.length === 0, B.protocolErrors.join(' | '));
   allOutputs.push(...B.stderr, auditRaw);

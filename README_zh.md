@@ -224,7 +224,6 @@ claude mcp add mcsm -e MCSM_MCP_CONFIG=$HOME/.config/mcsm-mcp/config.json -- nod
 | --- | --- |
 | `MCSM_MCP_CONFIG` | `config.json` 路径（默认 `~/.config/mcsm-mcp/config.json`） |
 | `MCSM_API_KEY` | 直接提供密钥，优先于密钥文件 |
-| `MCSM_MCP_AUDIT` | 审计日志路径（默认与配置同目录的 `audit.log`） |
 | `MCSM_MCP_ALLOW_LOOSE_PERMS=1` | 跳过文件权限检查（不推荐） |
 
 ## 公网面板建议

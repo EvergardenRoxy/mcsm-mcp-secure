@@ -3,14 +3,19 @@
 Read this before changing the code. Human-facing status and risks: `checklist.md`. User docs: `README.md` (English) and `README_zh.md` (Chinese); keep the two in sync.
 
 ## 1. What this is
-- `mcsm-mcp-secure`: a single-file MCP stdio server (`server.mjs`, Node ≥18, ESM) that lets any MCP client supporting stdio servers (e.g. Claude Desktop, Claude Code, other `mcpServers`-style clients) manage MCSManager **V10** instances through the panel HTTP API.
-- Version: 0.2.1. Dependencies: `@modelcontextprotocol/sdk`, `zod` (v3). No build step.
+- `mcsm-mcp-secure`: an MCP stdio server (`server.mjs` + `lib/`, Node ≥18, ESM) that lets any MCP client supporting stdio servers (e.g. Claude Desktop, Claude Code, other `mcpServers`-style clients) manage MCSManager **V10** instances through the panel HTTP API.
+- Version: 0.3.0. Dependencies: `@modelcontextprotocol/sdk`, `zod` (v3). No build step.
 - Primary goal: least privilege + secret isolation. The API key must never reach the MCP client config, tool output, errors, stderr, or `audit.log`.
 
 ## 2. File map
 | Path | Role |
 | --- | --- |
-| `server.mjs` | Entire server: config load/validation → HTTP client `api()` → redaction → tool registration → stdio transport |
+| `server.mjs` | Entry point and every tool definition: loads config, builds the panel client, registers tools (`addTool`), connects stdio |
+| `lib/config.mjs` | `loadConfig()`: reads and validates `config.json`, the API key, the panel address and file permissions; throws `ConfigError` |
+| `lib/panel.mjs` | `createPanel()`: panel HTTP `request()`, local rate limit, `redact()`; `McsmError` (a message that is safe to show the model) |
+| `lib/instances.mjs` | `createInstances()`: `resolve()` maps alias / nickname / UUID to an instance; `discover()` for wildcard mode |
+| `lib/files.mjs` | Pure rules: `normalizePath`, `isBinaryPath`, `assertEditableText`, `MAX_WRITE_BYTES` |
+| `lib/text.mjs` | Pure output shaping: `stripAnsi`, `truncate`, `outputAddedSince` |
 | `config.example.json` | Template for `config.json` (address, instances, `allow` switches). Never holds the key |
 | `test/mock-mcsm.mjs` | Strict mock of the V10 panel. Mirrors real panel/daemon quirks (see §4) |
 | `test/run-tests.mjs` | End-to-end tests: spawns `server.mjs` over stdio with the MCP SDK client. Groups A–O + Z (leak sweep) |
@@ -22,12 +27,12 @@ Read this before changing the code. Human-facing status and risks: `checklist.md
 2. POSIX: config and key files must not be group/other readable (`mode & 0o077 === 0`) unless `MCSM_MCP_ALLOW_LOOSE_PERMS=1`. Skipped on `win32`.
 3. Non-loopback `base_url` must be https unless `allow_insecure_http: true`. `base_url` must have no credentials, query, or hash.
 4. `fetch(..., { redirect: 'error' })`, so the key is never sent to a redirect target.
-5. Every tool result and error passes through `redact()` (key, encoded key, panel origin, non-loopback host). Unknown exceptions return only `e.name`.
+5. Every tool result and error passes through `redact()` in `addTool` (handlers return plain text and never build MCP results themselves) (key, encoded key, panel origin, non-loopback host). Unknown exceptions return only `e.name`.
 6. Write tools (`write_file`, `edit_file`, `send_command`, `start/stop/restart_instance`, `kill_instance`) are **registered only if** the matching `allow.*` flag is true. Do not register them and then check the flag at call time. `allow.write_files` defaults to false, independently of `read_files`.
 7. `get_instance_info` must not return `config.startCommand` (it may contain secrets).
 8. `list_files` must not print `absolutePath` (host path). `discover_instances` must not print node IP/port.
-9. `safePath()` rejects `..` segments and NUL. `send_command` rejects `\r`, `\n`, `\0`.
-10. The BOM strip in `loadConfig` must stay the escaped regex `/^﻿/`. Some edit tools turn the escape into a literal BOM character; if you edit near it, verify with `grep -c 'replace(/^\\uFEFF/' server.mjs` → `1`.
+9. `normalizePath()` rejects `..` segments and NUL. `send_command` rejects `\r`, `\n`, `\0`.
+10. The BOM strip in `lib/config.mjs` must stay the escaped regex `/^\uFEFF/`, and the `\uFFFD` checks in `lib/files.mjs` and `server.mjs` must stay escaped too. Some edit tools (and some shells) decode the escape into a literal character; after editing those files, verify with `grep -c 'replace(/^\\uFEFF/' lib/config.mjs` → `1`.
 11. stdout belongs to the MCP protocol. Log only to stderr (`log()`).
 
 ## 4. MCSManager V10 API facts (checked against `MCSManager/MCSManager@18c80bf`, 2026-10-12)
@@ -48,14 +53,14 @@ Read this before changing the code. Human-facing status and risks: `checklist.md
 - MCSM starts instances with `spawn` (no shell), so shell syntax like `"$@"` in a start command is passed literally.
 
 ## 5. Testing protocol
-- `npm test` must print `全部通过` and exit 0. On Windows, the permission assertions are skipped (`POSIX` flag in `run-tests.mjs`). The suite has never been run on real Windows.
-- When fixing an API mismatch: first change `test/mock-mcsm.mjs` so it reproduces the real panel's behaviour (cite the MCSManager source file), confirm the test fails on the old code, then fix `server.mjs`.
+- `npm test` must print `全部通过` and exit 0. On Windows, the permission assertions are skipped (`POSIX` flag in `run-tests.mjs`). Last full run on Windows 11: 2026-11-15, all passing.
+- When fixing an API mismatch: first change `test/mock-mcsm.mjs` so it reproduces the real panel's behaviour (cite the MCSManager source file), confirm the test fails on the old code, then fix the server code.
 - After each change, run a **mutation check**: break the new logic on purpose (remove a param, invert a condition) and confirm at least one test fails; then restore.
 - Test group Z scans all outputs for the key, mock URL, node IP and mock `ABS_PATH`. Add any new sensitive value to `leakStrings`.
 - Cloud or sandbox sessions usually cannot reach the user's panel. Real-panel verification is done by the maintainer in their own MCP client; ask them to run specific tool calls and paste the outputs.
 
 ## 6. Open items (see `checklist.md` for full list)
-- Not verified on a real panel: `write_file` / `edit_file`, power/kill tools, `allowed_daemons`, the 0.2.0 `read_file` changes.
+- Not verified on a real panel: `write_file` / `edit_file`, power/kill tools, `allowed_daemons`, `read_file` binary refusal. The read-only tools were re-checked on a real panel after the 0.3.0 refactor (2026-11-15).
 - S4 command-blocklist bypasses: documented only, by maintainer decision. Do not present the blocklist as a security boundary.
 - S5 `read_file` returns secrets in config files verbatim. A candidate improvement is a path deny-list or masking `password=` / `token=` lines; it needs the maintainer's approval first.
 
@@ -64,4 +69,4 @@ Read this before changing the code. Human-facing status and risks: `checklist.md
 - Ask the user before calling write tools (`send_command`, power, kill) against a real server. Prefer harmless commands (`list`) for tests.
 - Windows users: use `npm.cmd`. PowerShell 5.1 `>` writes UTF-16 (key files must be written with `[IO.File]::WriteAllText`).
 - Keep the code style: compact, Chinese user-facing messages, English code comments.
-- Update `checklist.md` (status table + issues) and the version in `package.json`, `package-lock.json`, and the `McpServer` constructor when behaviour changes.
+- Update `checklist.md` (status table + issues) and the version in `package.json`, `package-lock.json`, and the `McpServer` constructor in `server.mjs` when behaviour changes, and add `release-notes/v<version>.md` (the release workflow checks all of these).

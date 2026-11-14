@@ -11,7 +11,6 @@ const TEXT_FILES = {
   '/server.properties': 'motd=Hello\nmax-players=20\n',
   '/logs/latest.log': Array.from({ length: 500 }, (_, i) => `[INFO] L${String(i + 1).padStart(4, '0')}`).join('\n'),
   '/disguised.txt': 'PK\u0003\u0004\u0000\u0000' + '\uFFFD\u0000'.repeat(200) + 'tail',
-  '/logs/2026-09-13-1.log.gz': '\uFFFD'.repeat(100),
 };
 const FILES = {
   '/': [
