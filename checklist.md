@@ -17,7 +17,8 @@
 | `list_files`（含 `filter`、分页 / incl. filter, paging） | ✅（0.1.1 修复后 / after the 0.1.1 fix） | ✅ |
 | `read_file` 文本读取 / text read | ✅ | ✅ |
 | `read_file` 二进制拒绝、`lines`/`from`（0.2.0 新增） / binary refusal, `lines`/`from` (new in 0.2.0) | ❌ 未验证 / not verified | ✅ |
-| `write_file` / `edit_file`（0.2.1 新增 / new in 0.2.1） | ❌ 未验证 / not verified | ✅ |
+| `edit_file`（0.2.1 新增 / new in 0.2.1） | ✅（2026-11-15：原文替换为原文的保存，内容与大小不变 / identity replacement saved, content and size unchanged） | ✅ |
+| `write_file`（0.2.1 新增 / new in 0.2.1） | ❌ 成功覆盖未验证；与 `edit_file` 共用保存流程 / successful overwrite not verified; shares the save path with `edit_file` | ✅ |
 | `send_command` | ✅（只发过无副作用命令 / harmless commands only） | ✅ |
 | `start` / `stop` / `restart` / `kill_instance` | ❌ 未验证 / not verified | ✅ |
 | `wildcard.allowed_daemons` 过滤 / filtering | ❌ 未验证 / not verified | ✅ |
