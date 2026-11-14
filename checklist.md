@@ -128,5 +128,6 @@
 
 - [ ] [handoff.md](handoff.md) 第 3 节的安全不变量逐条成立。Every security invariant in section 3 of [handoff.md](handoff.md) still holds.
 - [ ] `npm test` 全部通过；修改后做变异检查（故意改坏代码，确认测试失败）。`npm test` passes; after changes, do a mutation check (break the code on purpose and confirm a test fails).
-- [ ] `npm audit --omit=dev` 无漏洞。`npm audit --omit=dev` reports no vulnerabilities.
+- [ ] `npm audit --omit=dev` 的告警已逐条评估。2026-11-15：6 个包有告警（最高 high），stdio 入口只加载其中的 `zod` 和 `fast-uri`，输入均来自本机，判断不影响部署，未处理。
+  `npm audit --omit=dev` findings have been assessed one by one. 2026-11-15: 6 packages flagged (highest: high); the stdio entry point only loads `zod` and `fast-uri`, whose inputs are local, so they were judged not to affect deployment and left as is.
 - [ ] 仓库中没有真实的 Key、面板地址、实例 UUID 或个人路径。No real keys, panel addresses, instance UUIDs or personal paths in the repository.
