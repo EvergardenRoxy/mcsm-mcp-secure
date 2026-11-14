@@ -50,7 +50,7 @@ const panel = createPanel({
   timeoutMs: config.request_timeout_ms,
 });
 const instances = createInstances(config, panel);
-const server = new McpServer({ name: 'mcsm-mcp-secure', version: '0.2.1' });
+const server = new McpServer({ name: 'mcsm-mcp-secure', version: '0.3.0' });
 
 // ---------------------------------------------------------- tool plumbing --
 const registeredTools = [];
