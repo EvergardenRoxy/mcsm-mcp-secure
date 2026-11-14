@@ -126,14 +126,7 @@
 
 ## 3. 审查要点 / Reviewer checklist
 
-- [ ] 写类工具（`write_files` / `send_command` / `power` / `kill`）在未开启时**不注册**。Write tools are **not registered** unless enabled.
-- [ ] 文件修改保留原始文本；拒绝不符合预期的匹配数；审计和保存结果不含文件正文。File modification preserves raw text, rejects unexpected match counts, and omits file contents from audit and save results.
-- [ ] 任何工具输出、错误信息、stderr、`audit.log` 中不出现 API Key、面板地址、节点 IP、`absolutePath`（测试 Z 组会扫描）。No API key, panel address, node IP or `absolutePath` in any tool output, error, stderr or `audit.log` (checked by test group Z).
-- [ ] `redirect: 'error'` 保持不变，密钥不会被转发到重定向目标。`redirect: 'error'` stays, so the key is never forwarded to a redirect target.
-- [ ] `normalizePath` 拒绝 `..` 与 NUL。`normalizePath` rejects `..` and NUL.
-- [ ] `config.json` 中出现 `api_key` 时拒绝启动。Startup is refused when `config.json` contains `api_key`.
-- [ ] `lib/config.mjs` 中 BOM 处理保持转义写法 `/^\uFEFF/`，不能是字面 BOM 字符。The BOM strip in `lib/config.mjs` must stay the escaped `/^\uFEFF/`, not a literal BOM character.
-- [ ] `list_files` 总是发送 `file_name`（见 0.1.1 修复）。`list_files` always sends `file_name` (see the 0.1.1 fix).
+- [ ] [handoff.md](handoff.md) 第 3 节的安全不变量逐条成立。Every security invariant in section 3 of [handoff.md](handoff.md) still holds.
 - [ ] `npm test` 全部通过；修改后做变异检查（故意改坏代码，确认测试失败）。`npm test` passes; after changes, do a mutation check (break the code on purpose and confirm a test fails).
-- [ ] `npm audit --omit=dev`（2026-10-13：0 个漏洞）。`npm audit --omit=dev` (2026-10-13: 0 vulnerabilities).
+- [ ] `npm audit --omit=dev` 无漏洞。`npm audit --omit=dev` reports no vulnerabilities.
 - [ ] 仓库中没有真实的 Key、面板地址、实例 UUID 或个人路径。No real keys, panel addresses, instance UUIDs or personal paths in the repository.
