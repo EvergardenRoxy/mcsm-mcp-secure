@@ -60,7 +60,7 @@ Read this before changing the code. Human-facing status and risks: `checklist.md
 - Cloud or sandbox sessions usually cannot reach the user's panel. Real-panel verification is done by the maintainer in their own MCP client; ask them to run specific tool calls and paste the outputs.
 
 ## 6. Open items (see `checklist.md` for full list)
-- Not verified on a real panel: `write_file` / `edit_file`, power/kill tools, `allowed_daemons`, `read_file` binary refusal. The read-only tools were re-checked on a real panel after the 0.3.0 refactor (2026-11-15).
+- Not verified on a real panel: a successful `write_file` overwrite, power/kill tools, `allowed_daemons`, `read_file` content sniffing of disguised binaries. Checked on a real panel after the 0.3.0 refactor (2026-11-15): the read-only tools, `send_command` (`list`), and `edit_file` with an identity replacement (same save path as `write_file`).
 - S4 command-blocklist bypasses: documented only, by maintainer decision. Do not present the blocklist as a security boundary.
 - S5 `read_file` returns secrets in config files verbatim. A candidate improvement is a path deny-list or masking `password=` / `token=` lines; it needs the maintainer's approval first.
 
